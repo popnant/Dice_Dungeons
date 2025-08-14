@@ -5,11 +5,12 @@ import pickle
 import os
 
 pygame.init()
-pygame.mixer.init() # Initialize the mixer
+pygame.mixer.init()
 
 screen = pygame.display.set_mode((800, 600))
 pygame.display.set_caption("RPG Dungeon Game")
 font = pygame.font.Font(None, 36)
+
 # โหลดภาพตัวละครตามคลาส
 player_images = {
     "Warrior": pygame.image.load("assets/players/warrior.png"),
@@ -27,6 +28,17 @@ enemy_images = {
     "BOSS DEMON": pygame.image.load("assets/enemies/boss_demon.png"),
 }
 
+# โหลดภาพไอเทม
+item_images = {
+    "Potion": pygame.image.load("assets/items/potion.png"),
+    "Mana Potion": pygame.image.load("assets/items/manapotion.png"),
+    "Meat": pygame.image.load("assets/items/meat.png"),
+    "Key": pygame.image.load("assets/items/key.png")
+}
+# ปรับขนาดภาพไอเทม
+for item_name, img in item_images.items():
+    item_images[item_name] = pygame.transform.scale(img, (32, 32))
+
 # --- ตั้งค่าหน้าจอ ---
 WIDTH, HEIGHT = 800, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -35,25 +47,25 @@ pygame.display.set_caption("RPG Dungeon Turn-Based")
 # --- สี ---
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-RED   = (255, 0, 0)
+RED = (255, 0, 0)
 GREEN = (0, 255, 0)
-YELLOW= (255, 255, 0)
-CYAN  = (0, 255, 255)
-GREY  = (100, 100, 100)
-BLUE  = (0, 100, 255)
-PURPLE= (128, 0, 128)
+YELLOW = (255, 255, 0)
+CYAN = (0, 255, 255)
+GREY = (100, 100, 100)
+BLUE = (0, 100, 255)
+PURPLE = (128, 0, 128)
 
 # --- ฟอนต์ ---
 font = pygame.font.SysFont("arial", 24)
 
 # --- โหลดภาพเต๋า (ถ้ามีไฟล์จริง) ---
 dice_images = []
-for i in range(1,7):
+for i in range(1, 7):
     try:
         img = pygame.image.load(f"assets/dice_{i}.png")
-        img = pygame.transform.scale(img, (64,64))
+        img = pygame.transform.scale(img, (64, 64))
     except:
-        img = pygame.Surface((64,64))
+        img = pygame.Surface((64, 64))
         img.fill(GREY)
         pygame.draw.rect(img, BLACK, img.get_rect(), 3)
         text = font.render(str(i), True, BLACK)
@@ -73,7 +85,6 @@ except pygame.error as e:
 class Player:
     def __init__(self, char_class):
         self.char_class = char_class
-
         if char_class == "Warrior":
             self.hp = 150
             self.mp = 20
@@ -98,7 +109,6 @@ class Player:
             self.attack = 10
             self.magic = 10
             self.mana_regen = 5
-
         self.max_hp = self.hp
         self.max_mp = self.mp
 
@@ -115,14 +125,14 @@ class Enemy:
         self.burn_turns = 0
 
 # --- ตัวแปรเกม ---
-player_pos = [0,0]
+player_pos = [0, 0]
 player = None
 player_hp = 0
 player_mp = 0
 player_max_hp = 0
 player_max_mp = 0
 keys_collected = 0
-inventory = []
+inventory = {}  # เปลี่ยนเป็น Dictionary
 game_state = "start_screen"
 current_enemies = []
 enemy_index = 0
@@ -144,29 +154,28 @@ def play_music(music_file, loop=True):
             pygame.mixer.stop()
             current_music = None
 
-def draw_text(text, font, color, surface, x, y):
-    textobj = font.render(text, True, color)
-    textrect = textobj.get_rect()
-    textrect.topleft = (x, y)
-    surface.blit(textobj, textrect)
+def draw_text(text, x, y, color=WHITE):
+    screen.blit(font.render(text, True, color), (x, y))
+
 # --- สร้างแผนที่ดันเจี้ยน ---
 dungeon_map = {}
 empty_rooms = []
 boss_room = None
 
 def create_new_dungeon():
-    global dungeon_map, empty_rooms, boss_room, player_pos
+    global dungeon_map, empty_rooms, boss_room, player_pos, inventory
     dungeon_map = {}
     empty_rooms = []
+    inventory = {}  # รีเซ็ต inventory ที่นี่
     for x in range(8):
         for y in range(8):
-            dungeon_map[(x,y)] = {
+            dungeon_map[(x, y)] = {
                 "enemy": [],
                 "trap": False,
                 "item": None,
                 "visited": False
             }
-            empty_rooms.append((x,y))
+            empty_rooms.append((x, y))
 
     # --- วางบอส ---
     boss_room = random.choice(empty_rooms)
@@ -188,13 +197,12 @@ def create_new_dungeon():
 
     # --- วางศัตรูในห้อง (1-3 ตัว) ---
     for pos in random.sample(empty_rooms, 12):
-        num_enemies = random.randint(1,3)
+        num_enemies = random.randint(1, 3)
         
         # สุ่มศัตรูตามน้ำหนักที่กำหนด
         spawned_enemies = random.choices(enemy_names, weights=enemy_weights, k=num_enemies)
         
         dungeon_map[pos]["enemy"] = [Enemy(e, enemy_templates[e].hp, enemy_templates[e].attack) for e in spawned_enemies]
-
 
     # --- วางกับดัก ---
     for pos in random.sample(empty_rooms, 10):
@@ -218,14 +226,11 @@ def create_new_dungeon():
         if random.random() < 0.4:
             dungeon_map[pos]["item"] = "Mana Potion"
     
-    player_pos = [0,0]
+    player_pos = [0, 0]
     
 create_new_dungeon()
 
 # --- ฟังก์ชันช่วยเหลือ ---
-def draw_text(text, x, y, color=WHITE):
-    screen.blit(font.render(text, True, color), (x, y))
-
 def draw_hp_bar(x, y, current, max_hp, width=100, height=15):
     pygame.draw.rect(screen, RED, (x, y, width, height))
     green_width = max(0, int(width * current / max_hp))
@@ -238,7 +243,7 @@ def draw_mp_bar(x, y, current, max_mp, width=100, height=10):
 
 def draw_dice(x, y, dice_value):
     if 1 <= dice_value <= 6:
-        screen.blit(dice_images[dice_value-1], (x,y))
+        screen.blit(dice_images[dice_value - 1], (x, y))
 
 def dice_roll():
     return random.randint(1, 6)
@@ -247,8 +252,8 @@ def draw_player_and_map():
     tile_size = 64
     for x in range(8):
         for y in range(8):
-            rect = pygame.Rect(x*tile_size, y*tile_size, tile_size, tile_size)
-            color = (50,50,50) if dungeon_map[(x,y)]["visited"] else (20,20,20)
+            rect = pygame.Rect(x * tile_size, y * tile_size, tile_size, tile_size)
+            color = (50, 50, 50) if dungeon_map[(x, y)]["visited"] else (20, 20, 20)
             pygame.draw.rect(screen, color, rect)
             pygame.draw.rect(screen, WHITE, rect, 1)
 
@@ -261,7 +266,7 @@ def show_enemy_icon(enemy, x, y):
     # วาดภาพศัตรู
     if enemy.name in enemy_images:
         img = pygame.transform.scale(enemy_images[enemy.name], (64, 64))
-        screen.blit(img, (x+16, y+16))
+        screen.blit(img, (x + 16, y + 16))
     
     # แสดงสถานะผิดปกติ
     if enemy.burn_turns > 0:
@@ -291,7 +296,6 @@ def game_over_screen():
                     pygame.quit()
                     sys.exit()
 
-
 # --- หน้าจอเริ่มเกม ---
 def start_game_screen():
     global game_state, player, player_hp, player_mp, player_max_hp, player_max_mp, keys_collected, inventory, meat_buff_turns, player_image, enemy_index
@@ -316,7 +320,7 @@ def start_game_screen():
                 player_max_hp = 0
                 player_max_mp = 0
                 keys_collected = 0
-                inventory = []
+                inventory = {}  # รีเซ็ต inventory ที่นี่
                 current_enemies = []
                 enemy_index = 0
                 meat_buff_turns = 0
@@ -333,8 +337,8 @@ def class_selection_screen():
         screen.fill(BLACK)
         draw_text("Select Your Class:", 300, 150, WHITE)
         draw_text("1) Warrior (HP: 120, MP: 20)", 280, 190, GREEN)
-        draw_text("2) Mage    (HP: 70,  MP: 80)", 280, 220, BLUE)
-        draw_text("3) Rogue   (HP: 90,  MP: 40)", 280, 250, YELLOW)
+        draw_text("2) Mage    (HP: 70,  MP: 80)", 280, 220, BLUE)
+        draw_text("3) Rogue   (HP: 90,  MP: 40)", 280, 250, YELLOW)
         draw_text("Press Q to Quit", 320, 300, RED)
         pygame.display.flip()
 
@@ -368,7 +372,7 @@ def class_selection_screen():
 # --- การย้ายผู้เล่น ---
 def move_player(dx, dy):
     global player_pos
-    nx, ny = player_pos[0]+dx, player_pos[1]+dy
+    nx, ny = player_pos[0] + dx, player_pos[1] + dy
     if 0 <= nx < 8 and 0 <= ny < 8:
         player_pos[0], player_pos[1] = nx, ny
 
@@ -376,23 +380,20 @@ def move_player(dx, dy):
 def check_room_event():
     global keys_collected, player_hp, game_state, current_enemies, enemy_index, inventory, meat_buff_turns
     
-    play_music(bg_music) # เล่นเพลงพื้นหลังเมื่ออยู่ในโหมดสำรวจ
+    play_music(bg_music)
 
     room = dungeon_map[tuple(player_pos)]
     room["visited"] = True
 
-    # ตรวจสอบบอสต้องมีกุญแจครบก่อนเข้า
     if tuple(player_pos) == boss_room and keys_collected < 3:
         screen.fill(BLACK)
         draw_text("🚫 Need 3 keys to enter the Boss room!", 200, 280, RED)
         pygame.display.flip()
         pygame.time.delay(1500)
-        # เดินกลับห้องเก่า
         return False
 
-    # กับดัก
     if room["trap"]:
-        damage = random.randint(1,5)
+        damage = random.randint(1, 5)
         player_hp -= damage
         screen.fill(BLACK)
         draw_text(f"💥 Trap! You take {damage} damage!", 50, 50, RED)
@@ -400,18 +401,17 @@ def check_room_event():
         pygame.time.delay(1200)
         room["trap"] = False
 
-    # เก็บไอเทม
     if room["item"]:
-        inventory.append(room["item"])
-        if room["item"] == "Key":
+        item_name = room["item"]
+        inventory[item_name] = inventory.get(item_name, 0) + 1  # เพิ่มไอเทมเข้า dictionary
+        if item_name == "Key":
             keys_collected += 1
         screen.fill(BLACK)
-        draw_text(f"🎁 Found {room['item']}!", 50, 90, YELLOW)
+        draw_text(f"🎁 Found {item_name}!", 50, 90, YELLOW)
         pygame.display.flip()
         pygame.time.delay(1000)
         room["item"] = None
 
-    # เจอศัตรู
     if room["enemy"]:
         current_enemies.clear()
         for e in room["enemy"]:
@@ -419,44 +419,42 @@ def check_room_event():
         enemy_index = 0
         room["enemy"] = []
         game_state = "battle"
-        play_music(battle_music) # สลับไปเล่นเพลงต่อสู้
-        
+        play_music(battle_music)
     return True
 
 # --- ใช้ไอเท็ม ---
 def use_item(item_name):
     global player_hp, player_mp, meat_buff_turns, inventory
-    if item_name == "Potion":
-        if "Potion" in inventory:
+    if item_name in inventory and inventory[item_name] > 0:
+        if item_name == "Potion":
             if player_hp < player_max_hp:
                 player_hp = min(player_hp + 30, player_max_hp)
-                inventory.remove("Potion")
+                inventory[item_name] -= 1
+                if inventory[item_name] == 0:
+                    del inventory[item_name]
                 return f"🧪 Used Potion! +30 HP"
             else:
                 return f"💬 HP already full!"
-        else:
-            return f"❌ No Potion!"
-
-    elif item_name == "Mana Potion":
-        if "Mana Potion" in inventory:
+        elif item_name == "Mana Potion":
             if player_mp < player_max_mp:
                 player_mp = min(player_mp + 20, player_max_mp)
-                inventory.remove("Mana Potion")
+                inventory[item_name] -= 1
+                if inventory[item_name] == 0:
+                    del inventory[item_name]
                 return f"✨ Used Mana Potion! +20 MP"
             else:
                 return f"💬 MP already full!"
-        else:
-            return f"❌ No Mana Potion!"
-
-    elif item_name == "Meat":
-        if "Meat" in inventory:
+        elif item_name == "Meat":
             meat_buff_turns = 3
-            inventory.remove("Meat")
+            inventory[item_name] -= 1
+            if inventory[item_name] == 0:
+                del inventory[item_name]
             return f"🍖 Used Meat! +10 Damage 3 turns"
-        else:
-            return f"❌ No Meat!"
+    else:
+        return f"❌ No {item_name}!"
     return ""
 
+# --- ระบบต่อสู้ ---
 # --- ระบบต่อสู้ ---
 def battle_screen():
     global player_hp, player_mp, player_max_hp, player_max_mp
@@ -470,9 +468,7 @@ def battle_screen():
     while True:
         screen.fill(BLACK)
         
-        # Check if all enemies in the room are defeated
         if enemy_index >= len(current_enemies):
-            # Check for win condition
             if tuple(player_pos) == boss_room:
                 draw_text("🎉 CONGRATULATIONS! You defeated the boss!", 50, 280, YELLOW)
                 draw_text("🎉 YOU WIN!", 300, 320, YELLOW)
@@ -486,7 +482,7 @@ def battle_screen():
                 pygame.display.flip()
                 pygame.time.delay(3000)
                 game_state = "exploration"
-                play_music(bg_music) # สลับกลับไปเพลงพื้นหลัง
+                play_music(bg_music)
                 return
         
         enemy = current_enemies[enemy_index]
@@ -500,25 +496,34 @@ def battle_screen():
         draw_mp_bar(400, 140, player_mp, player_max_mp)
         
         if player.char_class == "Warrior":
-            draw_text("1) Normal Attack (DMG 10, roll >= 2)", 50, 220)
-            draw_text("2) Heavy Attack (DMG 50, roll >= 3, -5 HP)", 50, 250)
-            draw_text("3) Special Attack (DMG 70, roll >= 5)", 50, 280)
+            draw_text("1) Normal Attack (DMG 10, roll >= 2)", 50, 220, WHITE)
+            draw_text("2) Heavy Attack (DMG 50, roll >= 3, -5 HP)", 50, 250, WHITE)
+            draw_text("3) Special Attack (DMG 70, roll >= 5)", 50, 280, WHITE)
         elif player.char_class == "Mage":
-            draw_text("1) Magic Attack (DMG 20, roll >= 2, -10 MP)", 50, 220)
-            draw_text("2) Special Magic (DMG 60, roll >= 4, -35 MP)", 50, 250)
-            draw_text("3) Fire Magic (DMG 40, roll >= 4, -20 MP, Burn)", 50, 280)
+            draw_text("1) Magic Attack (DMG 20, roll >= 2, -10 MP)", 50, 220, WHITE)
+            draw_text("2) Special Magic (DMG 60, roll >= 4, -35 MP)", 50, 250, WHITE)
+            draw_text("3) Fire Magic (DMG 40, roll >= 4, -20 MP, Burn)", 50, 280, WHITE)
         elif player.char_class == "Rogue":
-            draw_text("1) Normal Attack (DMG 35, roll >= 2)", 50, 220)
-            draw_text("2) Quick Attack (DMG 10, roll >= 1)", 50, 250)
-            draw_text("3) Poison Attack (DMG 30, roll >= 4, Poison)", 50, 280)
+            draw_text("1) Normal Attack (DMG 35, roll >= 2)", 50, 220, WHITE)
+            draw_text("2) Quick Attack (DMG 10, roll >= 1)", 50, 250, WHITE)
+            draw_text("3) Poison Attack (DMG 30, roll >= 4, Poison)", 50, 280, WHITE)
         
-        draw_text("4) Use Potion", 50, 310)
-        draw_text("5) Use Meat", 50, 340)
-        draw_text("6) Use Mana Potion", 50, 370)
-        draw_text(f"Inventory: {', '.join(inventory)}", 50, 420)
-        draw_text(f"Damage buff turns left: {meat_buff_turns}", 50, 450)
+        # --- เปลี่ยน UI ไอเทมให้อยู่ในบรรทัดเดียวกัน ---
+        draw_text("4) Use Potion", 50, 310, WHITE)
+        draw_text("5) Use Meat", 200, 310, WHITE)
+        draw_text("6) Use Mana Potion", 320, 310, WHITE)
         
-        # Display dice rolls
+        # แสดง Inventory ในหน้า Battle
+        draw_text("Inventory:", 50, 360, CYAN)
+        y_offset = 390
+        for item_name, count in inventory.items():
+            if count > 0 and item_name in item_images:
+                screen.blit(item_images[item_name], (50, y_offset))
+                draw_text(f"{item_name} x{count}", 90, y_offset + 5, WHITE)
+                y_offset += 40
+
+        draw_text(f"Damage buff turns left: {meat_buff_turns}", 50, 560, WHITE)
+        
         if player_dice is not None:
             draw_text(f"Your Roll: {player_dice}", 550, 220, YELLOW)
             draw_dice(550, 240, player_dice)
@@ -530,7 +535,9 @@ def battle_screen():
             draw_dice(550, 400, dodge_dice)
 
         if message:
-            draw_text(message, 50, 500, WHITE)
+            messages = message.split('\n')
+            for i, msg in enumerate(messages):
+                draw_text(msg, 50, 500 + (i * 25), WHITE)
             
         pygame.display.flip()
 
@@ -544,8 +551,8 @@ def battle_screen():
                 player_dice = None
                 enemy_dice = None
                 dodge_dice = None
-                action_taken = False
                 message = ""
+                action_taken = False
                 
                 # Universal actions
                 if event.key == pygame.K_4:
@@ -611,7 +618,8 @@ def battle_screen():
                                 message = "Your Magic Attack missed!"
                             action_taken = True
                         else:
-                            message = "Not enough MP for Magic Attack!"
+                            message = "Not enough MP for Magic Attack! Your turn is skipped."
+                            action_taken = True  # Added this line to skip turn
                     elif event.key == pygame.K_2:
                         if player_mp >= 35:
                             player_dice = dice_roll()
@@ -626,7 +634,8 @@ def battle_screen():
                                 message = "Your Special Magic missed!"
                             action_taken = True
                         else:
-                            message = "Not enough MP for Special Magic!"
+                            message = "Not enough MP for Special Magic! Your turn is skipped."
+                            action_taken = True # Added this line to skip turn
                     elif event.key == pygame.K_3:
                         if player_mp >= 20:
                             player_dice = dice_roll()
@@ -642,7 +651,8 @@ def battle_screen():
                                 message = "Your Fire Magic missed!"
                             action_taken = True
                         else:
-                            message = "Not enough MP for Fire Magic!"
+                            message = "Not enough MP for Fire Magic! Your turn is skipped."
+                            action_taken = True # Added this line to skip turn
 
                 # Rogue attacks
                 elif player.char_class == "Rogue":
@@ -658,7 +668,7 @@ def battle_screen():
                         action_taken = True
                     elif event.key == pygame.K_2:
                         player_dice = dice_roll()
-                        if player_dice >= 1: # Always hits
+                        if player_dice >= 1:
                             damage = 10
                             if meat_buff_turns > 0: damage += 10; meat_buff_turns -= 1
                             enemy.hp -= damage
@@ -678,7 +688,7 @@ def battle_screen():
 
                 # Enemy turn
                 if action_taken:
-                    # Check if enemy is defeated
+                    # Check if enemy is defeated after player's action
                     if enemy.hp <= 0:
                         screen.fill(BLACK)
                         draw_text(f"You defeated {enemy.name}!", 50, 500, CYAN)
@@ -686,13 +696,7 @@ def battle_screen():
                         pygame.time.delay(1500)
                         enemy_index += 1
                         if enemy_index >= len(current_enemies):
-                            if tuple(player_pos) == boss_room:
-                                # This block will be handled by the main battle loop check
-                                pass
-                            else:
-                                game_state = "exploration"
-                                play_music(bg_music)
-                                return
+                            pass
                     else:
                         enemy_dice = dice_roll()
                         dodge_dice = dice_roll()
@@ -703,46 +707,35 @@ def battle_screen():
                         else:
                             message += "\nYou dodged the enemy attack!"
 
-                    # Apply status effects and regen mana
-                    player.regen_mana()
-                    player_mp = player.mp
-                    
-                    if enemy.burn_turns > 0:
-                        burn_damage = 7
-                        enemy.hp -= burn_damage
-                        enemy.burn_turns -= 1
-                        message += f"\n🔥 Burn deals {burn_damage} damage to {enemy.name}!"
-                    
-                    if enemy.poison_turns > 0:
-                        poison_damage = 10
-                        enemy.hp -= poison_damage
-                        enemy.poison_turns -= 1
-                        message += f"\n💀 Poison deals {poison_damage} damage to {enemy.name}!"
+                        player.regen_mana()
+                        player_mp = player.mp
+                        
+                        if enemy.burn_turns > 0:
+                            burn_damage = 7
+                            enemy.hp -= burn_damage
+                            enemy.burn_turns -= 1
+                            message += f"\n🔥 Burn deals {burn_damage} damage to {enemy.name}!"
+                        
+                        if enemy.poison_turns > 0:
+                            poison_damage = 10
+                            enemy.hp -= poison_damage
+                            enemy.poison_turns -= 1
+                            message += f"\n💀 Poison deals {poison_damage} damage to {enemy.name}!"
 
-                    # Check again if enemy is defeated after status effects
-                    if enemy.hp <= 0:
-                        screen.fill(BLACK)
-                        draw_text(f"You defeated {enemy.name}!", 50, 500, CYAN)
-                        pygame.display.flip()
-                        pygame.time.delay(1500)
-                        enemy_index += 1
-                        if enemy_index >= len(current_enemies):
-                            if tuple(player_pos) == boss_room:
-                                # This block will be handled by the main battle loop check
-                                pass
-                            else:
-                                game_state = "exploration"
-                                play_music(bg_music)
-                                return
+                        # Check if enemy is defeated by status effects
+                        if enemy.hp <= 0:
+                            screen.fill(BLACK)
+                            draw_text(f"You defeated {enemy.name}!", 50, 500, CYAN)
+                            pygame.display.flip()
+                            pygame.time.delay(1500)
+                            enemy_index += 1
 
-        # Check for game over
         if player_hp <= 0:
             game_over_screen()
             return
-
 # --- Main Loop ---
 game_state = "start_screen"
-play_music(None) # หยุดเพลงเมื่อเริ่มเกม
+play_music(None)
 
 while True:
     if game_state == "start_screen":
@@ -750,16 +743,27 @@ while True:
     elif game_state == "class_select":
         game_state = class_selection_screen()
     elif game_state == "exploration":
-        play_music(bg_music) # ตรวจสอบและเล่นเพลงพื้นหลัง
+        play_music(bg_music)
         screen.fill(BLACK)
-        draw_text(f"Position: {player_pos}", 600, 40)
+        draw_text(f"Position: {player_pos}", 600, 40, WHITE)
         draw_player_and_map()
         draw_text(f"HP: {player_hp}/{player_max_hp}", 520, 500, GREEN)
         draw_hp_bar(520, 530, player_hp, player_max_hp)
         draw_text(f"MP: {player_mp}/{player_max_mp}", 520, 560, BLUE)
         draw_mp_bar(520, 590, player_mp, player_max_mp)
-        draw_text(f"Keys: {keys_collected} / 3", 50, 540, YELLOW)
-        draw_text("Inventory: " + ", ".join(inventory), 50, 560, CYAN)
+        
+        # --- แสดงผล Inventory ใหม่ (หน้าจอสำรวจ) ---
+        draw_text(f"Keys: {keys_collected} / 3", 50, 500, YELLOW)
+        draw_text("Inventory:", 50, 530, CYAN)
+        
+        y_offset = 560
+        for item_name, count in inventory.items():
+            if count > 0 and item_name in item_images:
+                screen.blit(item_images[item_name], (50, y_offset))
+                draw_text(f"{item_name} x{count}", 90, y_offset + 5, WHITE)
+                y_offset += 40
+        # ---------------------------------------------
+        
         draw_text("Arrow keys to move, Q=Quit", 550, 10, WHITE)
         pygame.display.flip()
 
@@ -785,8 +789,8 @@ while True:
                 if old_pos != player_pos:
                     valid = check_room_event()
                     if not valid:
-                        player_pos[:] = old_pos  # กลับตำแหน่งเดิม
+                        player_pos[:] = old_pos
 
     elif game_state == "battle":
-        play_music(battle_music) # ตรวจสอบและเล่นเพลงต่อสู้
+        play_music(battle_music)
         battle_screen()
