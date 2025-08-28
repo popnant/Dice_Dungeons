@@ -148,14 +148,14 @@ current_music = None
 
 def play_music(music_file, loop=True):
     global current_music
-    if current_music != music_file:
-        if music_file:
+    if music_file and current_music != music_file:
+        if current_music:
             pygame.mixer.stop()
-            music_file.play(-1 if loop else 0)
-            current_music = music_file
-        else:
-            pygame.mixer.stop()
-            current_music = None
+        music_file.play(-1 if loop else 0)
+        current_music = music_file
+    elif not music_file and current_music:
+        pygame.mixer.stop()
+        current_music = None
 
 def draw_text_center(text, color, surface, y_pos, font=font_main):
     """
@@ -225,15 +225,12 @@ def create_new_dungeon():
         dungeon_map[pos]["item"] = "Key"
         empty_rooms.remove(pos)
 
-    # --- วาง Potion และ Meat ---
+    # --- วาง Potion และ Mana Potion ---
     for pos in empty_rooms:
         if random.random() < 0.4:
             dungeon_map[pos]["item"] = "Potion"
-    for pos in empty_rooms:
         if random.random() < 0.2:
             dungeon_map[pos]["item"] = "Meat"
-    # --- วาง Mana Potion ---
-    for pos in empty_rooms:
         if random.random() < 0.4:
             dungeon_map[pos]["item"] = "Mana Potion"
     
@@ -357,8 +354,8 @@ def class_selection_screen():
     while selecting:
         screen.fill(BLACK)
         draw_text_center("Select Your Class:", WHITE, screen, HEIGHT/2 - 100)
-        draw_text_center("1) Warrior (HP: 120, MP: 20)", GREEN, screen, HEIGHT/2 - 60)
-        draw_text_center("2) Mage   (HP: 70,  MP: 80)", BLUE, screen, HEIGHT/2 - 30)
+        draw_text_center("1) Warrior (HP: 150, MP: 20)", GREEN, screen, HEIGHT/2 - 60)
+        draw_text_center("2) Mage   (HP: 80,  MP: 80)", BLUE, screen, HEIGHT/2 - 30)
         draw_text_center("3) Rogue  (HP: 90,  MP: 40)", YELLOW, screen, HEIGHT/2)
         draw_text_center("Press Q to Quit", RED, screen, HEIGHT/2 + 50)
         pygame.display.flip()
@@ -396,6 +393,8 @@ def move_player(dx, dy):
     nx, ny = player_pos[0]+dx, player_pos[1]+dy
     if 0 <= nx < 8 and 0 <= ny < 8:
         player_pos[0], player_pos[1] = nx, ny
+        return True
+    return False
 
 # --- เช็คเหตุการณ์ห้อง ---
 def check_room_event():
@@ -404,16 +403,16 @@ def check_room_event():
     play_music(bg_music) # เล่นเพลงพื้นหลังเมื่ออยู่ในโหมดสำรวจ
 
     room = dungeon_map[tuple(player_pos)]
-    room["visited"] = True
-
+    
     # ตรวจสอบบอสต้องมีกุญแจครบก่อนเข้า
     if tuple(player_pos) == boss_room and keys_collected < 3:
         screen.fill(BLACK)
         draw_text_center("🚫 Need 3 keys to enter the Boss room!", RED, screen, HEIGHT/2 - 20)
         pygame.display.flip()
         pygame.time.delay(1500)
-        # เดินกลับห้องเก่า
         return False
+
+    room["visited"] = True
 
     # กับดัก
     if room["trap"]:
@@ -445,7 +444,7 @@ def check_room_event():
         room["enemy"] = []
         game_state = "battle"
         play_music(battle_music) # สลับไปเล่นเพลงต่อสู้
-        
+    
     return True
 
 # --- ใช้ไอเท็ม ---
@@ -492,12 +491,13 @@ def battle_screen():
     dodge_dice = None
     message = ""
     
-    enemy_info_x, enemy_info_y = 50, 80
-    player_info_x, player_info_y = WIDTH - 250, 80
-    action_menu_x, action_menu_y = 50, HEIGHT - 200
-    message_box_x, message_box_y = 50, HEIGHT - 100
-    dice_box_x, dice_box_y = WIDTH - 250, HEIGHT - 200
-
+    # Adjusted UI element positions
+    enemy_info_x, enemy_info_y = 50, 50
+    player_info_x, player_info_y = WIDTH - 300, 50
+    action_menu_x, action_menu_y = 50, HEIGHT - 250
+    message_box_x, message_box_y = 50, HEIGHT - 80
+    dice_box_x, dice_box_y = WIDTH - 250, HEIGHT - 250
+    
     while True:
         screen.fill(BLACK)
         
@@ -563,10 +563,10 @@ def battle_screen():
         draw_text("6) Use Mana Potion", action_menu_x, action_menu_y + y_offset)
         
         # --- แสดง Inventory เหมือนในฉากสำรวจ ---
-        draw_text("Inventory:", player_info_x, player_info_y + 120, CYAN)
+        draw_text("Inventory:", player_info_x, player_info_y + 120 + 70, CYAN)
         inventory_counts = Counter(inventory)
         item_x = player_info_x
-        item_y = player_info_y + 150
+        item_y = player_info_y + 150 + 70
         for item, count in inventory_counts.items():
             if item in item_images:
                 item_img = pygame.transform.scale(item_images[item], (32, 32))
@@ -574,7 +574,7 @@ def battle_screen():
                 draw_text(f"x{count}", item_x + 35, item_y + 5, WHITE)
                 item_x += 100
         # --- สิ้นสุดการแก้ไข ---
-        draw_text(f"Damage buff turns left: {meat_buff_turns}", player_info_x, player_info_y + 200, YELLOW)
+        draw_text(f"Damage buff turns left: {meat_buff_turns}", player_info_x, player_info_y + 200 + 70, YELLOW)
 
         # Dice Rolls
         if player_dice is not None:
@@ -755,8 +755,8 @@ def battle_screen():
                                 play_music(bg_music)
                                 return
                         else:
-                             # Display message for next enemy
-                             message = f"New enemy: {current_enemies[enemy_index].name}"
+                            # Display message for next enemy
+                            message = f"New enemy: {current_enemies[enemy_index].name}"
                     else:
                         enemy_dice = dice_roll()
                         dodge_dice = dice_roll()
@@ -798,8 +798,8 @@ def battle_screen():
                                 play_music(bg_music)
                                 return
                         else:
-                             # Display message for next enemy
-                             message = f"New enemy: {current_enemies[enemy_index].name}"
+                            # Display message for next enemy
+                            message = f"New enemy: {current_enemies[enemy_index].name}"
 
         # Check for game over
         if player_hp <= 0:
@@ -816,68 +816,55 @@ while True:
     elif game_state == "class_select":
         game_state = class_selection_screen()
     elif game_state == "exploration":
-        play_music(bg_music) # ตรวจสอบแล้วว่าจะเล่นเพลง
-        
-        # UI สำหรับฉากสำรวจ
+        # Draw game screen
         screen.fill(BLACK)
         draw_player_and_map()
-
-        draw_text("Player Info", WIDTH - 200, 20, YELLOW)
-        draw_text(f"HP: {player_hp}/{player_max_hp}", WIDTH - 200, 50, GREEN)
-        draw_hp_bar(WIDTH - 200, 80, player_hp, player_max_hp)
-        draw_text(f"MP: {player_mp}/{player_max_mp}", WIDTH - 200, 100, BLUE)
-        draw_mp_bar(WIDTH - 200, 130, player_mp, player_max_mp)
         
-        draw_text("Inventory:", WIDTH - 200, 160, CYAN)
-        inventory_counts = Counter(inventory)
-        item_x = WIDTH - 200
-        item_y = 190
-        for item, count in inventory_counts.items():
-            if item in item_images:
-                item_img = pygame.transform.scale(item_images[item], (32, 32))
-                screen.blit(item_img, (item_x, item_y))
-                draw_text(f"x{count}", item_x + 35, item_y + 5, WHITE)
-                item_x += 100
+        # Draw UI
+        draw_text("Exploration Mode", 20, 20)
+        draw_text(f"HP: {player_hp}/{player_max_hp}", 20, 50, GREEN)
+        draw_text(f"MP: {player_mp}/{player_max_mp}", 20, 80, BLUE)
+        draw_text(f"Keys: {keys_collected}/3", WIDTH - 200, 20, YELLOW)
 
-        draw_text("Keys: " + str(keys_collected) + "/3", WIDTH - 200, 260, YELLOW)
-        draw_text("Move with Arrow Keys or WASD", 20, HEIGHT - 80, WHITE)
-        draw_text("Press I to use Potion/Meat", 20, HEIGHT - 50, WHITE)
-        draw_text("Press ESC to Quit", 20, HEIGHT - 20, WHITE)
+        # Draw current room info
+        current_room = dungeon_map[tuple(player_pos)]
+        draw_text("Room Info:", WIDTH - 200, 80)
         
-        # Event Loop
+        if tuple(player_pos) == boss_room:
+            draw_text("Boss Room!", WIDTH - 200, 110, RED)
+        elif current_room["enemy"]:
+            draw_text(f"Enemies: {', '.join([e.name for e in current_room['enemy']])}", WIDTH - 200, 110, RED)
+        if current_room["trap"]:
+            draw_text("Trap!", WIDTH - 200, 140, RED)
+        if current_room["item"]:
+            draw_text(f"Item: {current_room['item']}", WIDTH - 200, 170, YELLOW)
+            
+        # Draw movement instructions
+        draw_text("Use arrow keys to move", 20, HEIGHT - 100)
+        draw_text("Press Q to quit", 20, HEIGHT - 70)
+        
+        pygame.display.flip()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
+                moved = False
+                if event.key == pygame.K_UP:
+                    moved = move_player(0, -1)
+                elif event.key == pygame.K_DOWN:
+                    moved = move_player(0, 1)
+                elif event.key == pygame.K_LEFT:
+                    moved = move_player(-1, 0)
+                elif event.key == pygame.K_RIGHT:
+                    moved = move_player(1, 0)
+                elif event.key == pygame.K_q or event.key == pygame.K_ESCAPE:
                     pygame.quit()
                     sys.exit()
                 
-                # Player movement
-                if event.key == pygame.K_UP or event.key == pygame.K_w:
-                    move_player(0, -1)
-                elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
-                    move_player(0, 1)
-                elif event.key == pygame.K_LEFT or event.key == pygame.K_a:
-                    move_player(-1, 0)
-                elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
-                    move_player(1, 0)
-                
-                # Check for room event
-                if check_room_event():
-                    if game_state == "exploration":
-                        player.regen_mana()
+                if moved:
+                    check_room_event()
 
-                # Item usage (re-purpose 'I' key for simplicity)
-                if event.key == pygame.K_p: # Potion
-                    use_item("Potion")
-                elif event.key == pygame.K_m: # Mana Potion
-                    use_item("Mana Potion")
-                elif event.key == pygame.K_t: # Meat
-                    use_item("Meat")
-
-        pygame.display.flip()
-    
     elif game_state == "battle":
         battle_screen()
